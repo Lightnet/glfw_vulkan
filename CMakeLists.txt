@@ -36,17 +36,12 @@ FetchContent_Declare(
     GIT_TAG 3.4
     GIT_SHALLOW TRUE
 )
-set(DOXYGEN_SKIP_DOT TRUE CACHE BOOL "" FORCE)
+# Configure GLFW options
 set(GLFW_BUILD_EXAMPLES FALSE CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS FALSE CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS FALSE CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(glfw)
-
-# Configure GLFW options
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_VULKAN_STATIC OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glfw)
 
 # Declare cglm
 FetchContent_Declare(
