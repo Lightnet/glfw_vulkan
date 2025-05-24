@@ -1,6 +1,6 @@
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>
-#include <cglm/cglm.h> // Use cglm instead of glm
+#include <cglm/cglm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,8 +47,8 @@ int main() {
         return -1;
     }
 
-    // Create window (Vulkan doesn't own the window, GLFW does)
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API); // No OpenGL context
+    // Create window
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window = glfwCreateWindow(800, 600, "Vulkan Triangle", NULL, NULL);
     if (!window) {
         fprintf(stderr, "Failed to create GLFW window\n");
@@ -89,7 +89,7 @@ int main() {
     vkEnumeratePhysicalDevices(instance, &device_count, NULL);
     VkPhysicalDevice* devices = (VkPhysicalDevice*)malloc(device_count * sizeof(VkPhysicalDevice));
     vkEnumeratePhysicalDevices(instance, &device_count, devices);
-    VkPhysicalDevice physical_device = devices[0]; // Pick first device
+    VkPhysicalDevice physical_device = devices[0];
     free(devices);
 
     // Find queue family
@@ -451,10 +451,13 @@ int main() {
     // Synchronization
     VkSemaphoreCreateInfo semaphore_info = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
     VkFenceCreateInfo fence_info = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
-    VkSemaphore image_available_semaphore, render_finished_semaphore;
+    VkSemaphore image_available_semaphore;
+    VkSemaphore* render_finished_semaphores = (VkSemaphore*)malloc(image_count * sizeof(VkSemaphore));
     VkFence fence;
     VK_CHECK(vkCreateSemaphore(device, &semaphore_info, NULL, &image_available_semaphore));
-    VK_CHECK(vkCreateSemaphore(device, &semaphore_info, NULL, &render_finished_semaphore));
+    for (uint32_t i = 0; i < image_count; i++) {
+        VK_CHECK(vkCreateSemaphore(device, &semaphore_info, NULL, &render_finished_semaphores[i]));
+    }
     VK_CHECK(vkCreateFence(device, &fence_info, NULL, &fence));
 
     // Render loop
@@ -464,7 +467,11 @@ int main() {
         vkResetFences(device, 1, &fence);
 
         uint32_t image_index;
-        vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphore, VK_NULL_HANDLE, &image_index);
+        VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphore, VK_NULL_HANDLE, &image_index);
+        if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            fprintf(stderr, "Failed to acquire swapchain image: %d\n", result);
+            break;
+        }
 
         VkSubmitInfo submit_info = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -474,25 +481,32 @@ int main() {
             .commandBufferCount = 1,
             .pCommandBuffers = &command_buffers[image_index],
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &render_finished_semaphore
+            .pSignalSemaphores = &render_finished_semaphores[image_index]
         };
         VK_CHECK(vkQueueSubmit(graphics_queue, 1, &submit_info, fence));
 
         VkPresentInfoKHR present_info = {
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &render_finished_semaphore,
+            .pWaitSemaphores = &render_finished_semaphores[image_index],
             .swapchainCount = 1,
             .pSwapchains = &swapchain,
             .pImageIndices = &image_index
         };
-        vkQueuePresentKHR(present_queue, &present_info);
+        result = vkQueuePresentKHR(present_queue, &present_info);
+        if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            fprintf(stderr, "Failed to present image: %d\n", result);
+            break;
+        }
     }
 
     // Cleanup
     vkDeviceWaitIdle(device);
     vkDestroySemaphore(device, image_available_semaphore, NULL);
-    vkDestroySemaphore(device, render_finished_semaphore, NULL);
+    for (uint32_t i = 0; i < image_count; i++) {
+        vkDestroySemaphore(device, render_finished_semaphores[i], NULL);
+    }
+    free(render_finished_semaphores);
     vkDestroyFence(device, fence, NULL);
     vkFreeCommandBuffers(device, command_pool, image_count, command_buffers);
     free(command_buffers);
